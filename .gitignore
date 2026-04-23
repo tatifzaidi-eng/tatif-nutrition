@@ -1,0 +1,35 @@
+# Fichiers locaux — NE JAMAIS committer
+local.properties
+*.jks
+*.keystore
+
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.xml
+!/.idea/codeStyles/
+!/.idea/inspectionProfiles/
+
+# Fichiers OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Fichiers générés
+gen/
+out/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# APK / AAB
+*.apk
+*.aab
+*.ap_
