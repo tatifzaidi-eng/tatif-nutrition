@@ -1,216 +1,179 @@
 package com.nutriscan.presentation.ui.home
 
 import androidx.compose.animation.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.PaddingValues
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.nutriscan.domain.model.Food
-import com.nutriscan.domain.model.UiState
-import com.nutriscan.presentation.ui.components.*
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.nutriscan.domain.model.*
+import com.nutriscan.domain.usecase.*
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.*
+import javax.inject.Inject
+import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+@HiltViewModel
+class HomeViewModel @Inject constructor(
+    private val searchFoodsUseCase: SearchFoodsUseCase,
+    private val getHistoryUseCase: GetSearchHistoryUseCase
+) : ViewModel() {
+
+    private val _query = MutableStateFlow("")
+    val query = _query.asStateFlow()
+
+    @OptIn(FlowPreview::class)
+    val searchResults: StateFlow<UiState<List<Food>>> = _query
+        .debounce(300L).distinctUntilChanged()
+        .flatMapLatest { q ->
+            if (q.isBlank()) flowOf(UiState.Empty)
+            else searchFoodsUseCase(q)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState.Empty)
+
+    val history: StateFlow<List<Food>> = getHistoryUseCase()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun onQueryChange(q: String) { _query.value = q }
+    fun clearQuery() { _query.value = "" }
+}
+
 @Composable
 fun HomeScreen(
+    contentPadding: PaddingValues,
     onFoodClick: (String) -> Unit,
-    onBarcodeScan: () -> Unit,
-    viewModel: HomeViewModel = hiltViewModel()
+    vm: HomeViewModel = hiltViewModel()
 ) {
-    val searchQuery by viewModel.searchQuery.collectAsState()
-    val searchResults by viewModel.searchResults.collectAsState()
-    val history by viewModel.recentHistory.collectAsState()
+    val query by vm.query.collectAsState()
+    val results by vm.searchResults.collectAsState()
+    val history by vm.history.collectAsState()
 
-    Scaffold(
-        topBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                // ── En-tête ─────────────────────────────────────────────────────
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "NutriScan",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Analysez vos aliments",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    // Bouton scanner code-barres
-                    IconButton(
-                        onClick = onBarcodeScan,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.QrCodeScanner,
-                            contentDescription = "Scanner un code-barres",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                // ── Barre de recherche ──────────────────────────────────────────
-                SearchBar(
-                    query = searchQuery,
-                    onQueryChange = viewModel::onSearchQueryChanged,
-                    onClear = viewModel::clearSearch,
-                    placeholder = "Rechercher un aliment…"
-                )
-            }
-        }
-    ) { paddingValues ->
-        Box(
+    Column(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(16.dp)
         ) {
-            // ── Résultats de recherche ou écran principal ───────────────────────
-            AnimatedContent(
-                targetState = searchQuery.isNotBlank(),
-                transitionSpec = {
-                    fadeIn() togetherWith fadeOut()
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("NutriScan", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text("Analysez vos aliments", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Box(
+                    modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) { Text("🥗", fontSize = 20.sp) }
+            }
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = query, onValueChange = vm::onQueryChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Rechercher un aliment…", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f)) },
+                leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) IconButton(onClick = vm::clearQuery) {
+                        Icon(Icons.Filled.Close, null)
+                    }
                 },
-                label = "search_content"
-            ) { isSearching ->
-                if (isSearching) {
-                    SearchResultsContent(
-                        state = searchResults,
-                        onFoodClick = onFoodClick
-                    )
-                } else {
-                    HomeContent(
-                        history = history,
-                        onFoodClick = onFoodClick
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SearchResultsContent(
-    state: UiState<List<Food>>,
-    onFoodClick: (String) -> Unit
-) {
-    when (state) {
-        is UiState.Loading -> LoadingView()
-        is UiState.Empty -> EmptyView(message = "Aucun résultat trouvé")
-        is UiState.Error -> ErrorView(message = state.message)
-        is UiState.Success -> {
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                item {
-                    Text(
-                        text = "${state.data.size} résultats",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
-                }
-                items(state.data, key = { it.id }) { food ->
-                    FoodListItem(food = food, onClick = { onFoodClick(food.id) })
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HomeContent(
-    history: List<Food>,
-    onFoodClick: (String) -> Unit
-) {
-    LazyColumn(
-        contentPadding = PaddingValues(bottom = 16.dp)
-    ) {
-        // ── Accès rapide ────────────────────────────────────────────────────────
-        item {
-            SectionHeader(title = "Accès rapide")
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(quickAccessCategories) { cat ->
-                    QuickCategoryChip(category = cat)
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-        }
-
-        // ── Historique récent ───────────────────────────────────────────────────
-        if (history.isNotEmpty()) {
-            item {
-                SectionHeader(title = "Récemment consultés")
-            }
-            items(history.take(5), key = { "hist_${it.id}" }) { food ->
-                FoodListItem(
-                    food = food,
-                    onClick = { onFoodClick(food.id) },
-                    showTimestamp = true
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(0.5f),
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(0.5f)
                 )
-            }
+            )
         }
 
-        // ── Suggestions populaires ──────────────────────────────────────────────
-        item {
-            SectionHeader(title = "Populaires")
-        }
-        items(popularFoods, key = { "pop_${it}" }) { name ->
-            SuggestionItem(name = name, onClick = { /* Recherche directe */ })
+        AnimatedContent(targetState = query.isNotBlank(), label = "search") { isSearching ->
+            if (isSearching) {
+                when (val s = results) {
+                    is UiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    is UiState.Empty -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Aucun résultat", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    is UiState.Error -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(s.message, color = MaterialTheme.colorScheme.error) }
+                    is UiState.Success -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(s.data, key = { it.id }) { FoodCard(it) { onFoodClick(it.id) } }
+                    }
+                }
+            } else {
+                LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
+                    if (history.isNotEmpty()) {
+                        item { Text("Récemment consultés", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
+                        items(history.take(5), key = { "h${it.id}" }) { FoodCard(it) { onFoodClick(it.id) } }
+                    }
+                    item { Text("Populaires", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
+                    items(listOf("Avocat 🥑", "Saumon 🐟", "Épinards 🥬", "Quinoa 🌾", "Amandes 🥜", "Lentilles 🫘")) { name ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable {}.padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Filled.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.5f), modifier = Modifier.size(16.dp))
+                            Text(name, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
-private val quickAccessCategories = listOf(
-    "🍎 Fruits", "🥦 Légumes", "🥩 Protéines",
-    "🌾 Céréales", "🥛 Laitages", "🫘 Légumineuses"
-)
-
-private val popularFoods = listOf(
-    "Avocat", "Saumon", "Épinards", "Quinoa",
-    "Amandes", "Lentilles", "Banane", "Poulet grillé"
-)
-
 @Composable
-private fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Medium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-    )
+fun FoodCard(food: Food, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) { Text(food.category.emoji, fontSize = 26.sp) }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(food.nameFr.ifBlank { food.name }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val kcal = food.calories.roundToInt()
+                    val (bg, fg) = when {
+                        kcal < 60 -> Pair(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primary)
+                        kcal < 200 -> Pair(MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.tertiary)
+                        else -> Pair(MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.error)
+                    }
+                    Surface(color = bg, shape = RoundedCornerShape(6.dp)) {
+                        Text("$kcal kcal", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = fg, fontWeight = FontWeight.Medium)
+                    }
+                    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(6.dp)) {
+                        Text("P ${food.proteins.roundToInt()}g", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.4f), modifier = Modifier.size(20.dp))
+        }
+    }
 }
