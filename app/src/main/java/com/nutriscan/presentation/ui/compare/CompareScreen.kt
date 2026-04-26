@@ -161,4 +161,73 @@ private fun CompareBarChart(foods: List<Food>) {
         "Lip" to ({ f: Food -> f.fat } to 40.0),
         "Fib" to ({ f: Food -> f.fiber } to 20.0)
     )
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), shape = RoundedCornerShape(
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), shape = RoundedCornerShape(16.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Comparaison (100g)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(12.dp))
+            Row(modifier = Modifier.fillMaxWidth().height(180.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.SpaceEvenly) {
+                defs.forEach { (labelFn, maxRef) ->
+                    val (label, getFn) = labelFn
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom, modifier = Modifier.weight(1f)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom, modifier = Modifier.height(150.dp)) {
+                            foods.forEachIndexed { i, food ->
+                                val v = getFn(food)
+                                val h = ((v / maxRef) * 150).coerceIn(4.0, 150.0).dp
+                                Box(modifier = Modifier.width(16.dp).height(h).clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)).background(chartColors[i]))
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                foods.forEachIndexed { i, food ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(chartColors[i]))
+                        Text(food.nameFr.ifBlank { food.name }, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompareTable(foods: List<Food>, highlights: Map<String, String>) {
+    val rows = listOf(
+        "Calories"  to ({ f: Food -> f.calories }      to false),
+        "Protéines" to ({ f: Food -> f.proteins }      to true),
+        "Glucides"  to ({ f: Food -> f.carbohydrates } to false),
+        "Lipides"   to ({ f: Food -> f.fat }           to false),
+        "Fibres"    to ({ f: Food -> f.fiber }         to true)
+    )
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), shape = RoundedCornerShape(16.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Tableau comparatif", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth()) {
+                Spacer(Modifier.width(80.dp))
+                foods.forEachIndexed { i, f ->
+                    Text(f.nameFr.ifBlank { f.name }.take(10), modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = chartColors[i], textAlign = TextAlign.Center, maxLines = 2)
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            rows.forEach { (label, pair) ->
+                val (getFn, higherBetter) = pair
+                val vals = foods.map { getFn(it) }
+                val best = if (higherBetter) vals.max() else vals.min()
+                Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(80.dp))
+                    foods.forEachIndexed { i, f ->
+                        val v = getFn(f); val winner = v == best && foods.size > 1
+                        Box(modifier = Modifier.weight(1f).then(if (winner) Modifier.clip(RoundedCornerShape(6.dp)).background(chartColors[i].copy(0.12f)) else Modifier), contentAlignment = Alignment.Center) {
+                            Text("${v.roundToInt()}", style = MaterialTheme.typography.labelSmall, fontWeight = if (winner) FontWeight.Bold else FontWeight.Normal, color = if (winner) chartColors[i] else MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(3.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
